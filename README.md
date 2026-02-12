@@ -27,7 +27,7 @@ My boss gave me a seemingly monumental task. Make a PEG Parser for C23... Before
     2. If B _succeed_ -> stop
     3. C is never considered even if it would pass
     4. if B fails then stop C is not even considered
-    5. **THERE IS NO BACKTRACKING ONCE AN INPUT IS CONSUMED**
+    5. **THERE IS NO _BACKTRACKING ONCE_ AN INPUT IS CONSUMED**
 3. Example 1 ```Digit <- [0-9] / [0-9][0-9]
     - Input: 42
     1. [0-9] would match 4 Success Parser Commits
