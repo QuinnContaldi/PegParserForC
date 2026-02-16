@@ -294,3 +294,207 @@ parse_expression()
 #### How PEG could address this issue
 - Now look at our PEG Grammar `Expression <- AssignmentExpression (',' AssignmentExpression)*`
 - No call to Expression without consuming input
+
+## Step By Step C to Peg Conversion
+
+### Step 0: What you’re translating, really
+A traditional C grammar (CFG) is written like:
+```
+statement
+  : expression_statement
+  | declaration
+  ;
+```
+Remember A CFG parser (LR/LALR/GLR) can keep multiple possibilities alive until later tokens disambiguate while A PEG parser cannot. PEG says try the first alternative if it succeeds, commit. Only try the second alternative if the first fails.
+```
+Statement <- Declaration / ExpressionStatement
+```
+is not equivalent to the CFG. It’s a different language now, because “Declaration might succeed in the wrong places.”
+
+### Step 1: Why `T * x;` is ambiguous in C
+
+#### Two interpretations:
+1. (A) Declaration (if T is a typedef-name) This means: x is a pointer to T.
+(B) Expression statement (if T is a variable)
+
+2. This means: multiply T by x, then throw result away. 
+Both have identical token shapes:
+
+    Identifier '*' Identifier ';'
+
+The difference is semantic: is T a typedef-name right now? That’s why people say:
+`“C is not context-free” (Parsing needs symbol-table info.)`
+
+### Step 2: Why naïve PEG ordering breaks
+
+If you do: `Statement <- Declaration / ExpressionStatement`
+
+1. Then when input is T * x;:
+2. PEG tries Declaration and Declaration can often match sequences that look like a declaration for a long time
+3. It may “succeed” even when you intended an expression
+4. Even worse: if it fails late, PEG will backtrack inside the Declaration attempt but it
+will not “un-commit” if it already matched successfully. Ordered choice is ruthless.
+5. We must Make Declaration only run when you’re sure the statement starts like a declaration.
+6. This idea is “tokens + structure first”
+
+### Step 3: The PEG fix is “guarded choice” (predictive start check)
+
+Instead of `Statement <- Declaration / ExpressionStatement`
+We do :
+```
+Statement <- DeclarationStatement / ExpressionStatement
+DeclarationStatement <- &DeclStart Declaration
+```
+Read that as:
+1. &DeclStart is lookahead: it peeks without consuming
+2. Only if DeclStart is true do we attempt Declaration
+3. This is the key pattern in PEG for C.
+#### Why this matters
+Now T * x; goes like this:
+1. If DeclStart says “yes this starts like a declaration”, parse as declaration.
+2. Otherwise you never even try the declaration path, and you parse it as an expression-statement.
+Note do full walk through here
+
+### Step 4: What is DeclStart in real C?
+A declaration in C starts with declaration-specifiers (roughly):
+1. typedef, extern, static, _Thread_local, auto, register
+2. type specifiers like int, char, struct, enum, _Atomic, etc.
+3. qualifiers like const, volatile, restrict
+4. function specifiers like inline, _Noreturn
+5. alignment specifiers
+6. typedef-name (this is the killer)
+
+So a practical DeclStart is:
+```
+DeclStart <- StorageClassSpecifier
+          / TypeQualifier
+          / FunctionSpecifier
+          / TypeSpecifier
+          / TypedefName
+```
+
+The first 4 are “easy”: they’re keywords (int, struct, const, inline, etc.) The last one requires the symbol table.
+
+#### Step 5: TypedefName is the real problem (and how you handle it)
+
+A TypedefName is lexically just an identifier:
+
+Identifier <- [a-zA-Z_] [a-zA-Z0-9_]*
+But semantically, Identifier is a TypedefName only if it’s in the typedef set at that location.
+#### So the PEG strategy is:
+1. keep a set/map: typedef_names
+2. when you parse a typedef declaration, add new names to that set
+3. when you see an identifier at the start of a statement, check whether it’s in typedef_names
+4. This is the “C needs symbol table while parsing” rule.
+
+### Step 6: How this looks with cpp-peglib (conceptually)
+
+cpp-peglib lets you attach semantic actions to rules. The common approach is: 
+1. Grammar recognizes an Identifier
+2. Action gets the matched string
+3. You decide if it’s a typedef-name (by checking a set)
+4. There are two ways people do this in PEG frameworks:
+
+#### semantic predicate / condition in grammar
+1. “match Identifier only if condition holds”.
+2. TypedefName <- Identifier  # with a predicate check in code
+
+### Step 7: What “tokens + structure first” means in practice
+
+When you’re bootstrapping the PEG for C, we should start with constructs that are:
+unambiguous, bracketed / delimited, don’t require typedef knowledge. So we will start with the following
+compound statements { ... }
+
+if ( ... ) ...
+
+while ( ... ) ...
+
+return ... ;
+
+;
+
+```
+Statement
+  <- CompoundStatement
+   / ReturnStatement
+   / IfStatement
+   / WhileStatement
+   / EmptyStatement
+   / ExprStatement   # keep this late
+```
+#### why Declaration is missing:
+1. Declarations force you to solve typedef ambiguity immediately.
+2. Lets get our parser successfully parsing real code structure, and then add declaration support once the tokenization, AST plumbing, and statement scaffolding works.
+3. So lets build a “structure first.” approach
+
+### Step 8: When we finally add declarations, we add them with DeclStart
+```
+Statement
+  <- CompoundStatement
+   / ReturnStatement
+   / IfStatement
+   / WhileStatement
+   / EmptyStatement
+   / DeclarationStatement
+   / ExprStatement
+
+DeclarationStatement <- &DeclStart Declaration
+ExprStatement <- Expression? ';'
+```
+#### **This will be the heart of PEG-ing C**:
+```
+DeclarationStatement <- &DeclStart Declaration
+```
+“don’t guess, predict”.
+
+### Step 9: The direct CFG → PEG translation patterns We will use constantly
+
+Here are the common rewrites we will use on thradams/cgrammar:
+
+#### (1) Left-recursive list
+```
+CFG:
+
+A : A ',' B | B ;
+
+
+PEG:
+
+A <- B (',' B)*
+```
+#### (2) Optional
+````
+CFG:
+
+A : B | /* empty */ ;
+
+
+PEG:
+
+A <- B?
+````
+#### (3) One-or-more list
+````
+CFG:
+
+A : B | A B ;
+
+
+PEG:
+
+A <- B+
+```
+#### (4) “Two forms” with shared prefix (factor it!)
+```
+CFG:
+
+compound : '{' '}' | '{' block_items '}' ;
+
+
+PEG:
+
+Compound <- '{' BlockItem* '}'
+
+```
+
+This is why { ... } is a great starter: it collapses cleanly.
