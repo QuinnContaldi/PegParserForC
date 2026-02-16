@@ -58,11 +58,11 @@ My boss gave me a seemingly monumental task. Make a PEG Parser for C23... Before
 ### Common Misunderstandings
 1. Wait so you try the next rule on failure but dont try the next choice on failure? Really the question you are asking is the difference between Case1 and Case2
 - Case 1: Rule without choice
-    `
+    ```
     A <- B* C
     B <- 'a'
     C <- 'x'
-    `
+    ```
     - Input: aaax
     - How PEG executes this
     - Think in imperative terms:
@@ -78,12 +78,11 @@ My boss gave me a seemingly monumental task. Make a PEG Parser for C23... Before
     6. rule x succeds and the whole sequence is accepted.
     - ** THE MAIN IDEA**: In a sequence, failure of a sub-expression only matters if it causes the entire sequence to fail.
 - Case 2: Parse with the choice operator right hand side is never reached
-    `
+    ```
     A <- B* / C
     B <- 'a'
     C <- 'x'
-    `
-    - ```
+
     if (parse_B_star())
     {
         return success;   // COMMIT
@@ -91,7 +90,8 @@ My boss gave me a seemingly monumental task. Make a PEG Parser for C23... Before
     else
     {
         return parse_C();
-    }```
+    }
+    ```
     1. B matches 'a' → consume
     2. B matches 'a' → consume
     3. B matches 'a' → consume
@@ -99,15 +99,19 @@ My boss gave me a seemingly monumental task. Make a PEG Parser for C23... Before
     5. PEG does not try C
 - Case 3: Parse with choice operator left hand side fails right hand side is reached
 - Input: 'x'
-- `A <- B+ / C
+```
+A <- B+ / C
 B <- 'a'
-C <- 'x'`
-- ```if (parse_B_plus()) 
+C <- 'x'
+if (parse_B_plus()) 
 {
     return success;
-} else {
+} 
+else
+{
     return parse_C();
-}```
+}
+```
 1. B+ fails since current char is 'x'
 2. This is a real expression failure thus we revert and now try rule C. Notice the difference. It was not a succesful parse that hit a terminating character. This failed right off the bat.
 4. C <- 'x'passes since current char is 'x'
@@ -125,6 +129,7 @@ C <- 'x'`
 | `+`    | One or more                    | `Digit+` | Matches `"1"`, `"123"` (not empty) |
 | `?`    | Optional (zero or one)         | `Sign?`  | Matches `""` or `"+"`              |
 | `{n}`  | Exactly *n* (rare / extension) | –        | PEG typically prefers `+ * ?`      |
+
 ##### Character Classes 
 | Syntax        | Meaning                                             |
 | ------------- | --------------------------------------------------- |
@@ -137,49 +142,67 @@ C <- 'x'`
 | `[[:space:]]` | Any whitespace character (implementation-dependent) |
 
 #### Sequence (AND)
-| Syntax | Meaning | Example |
-|--------|---------|---------|
-| A B C  | Match A, then B, then C | `abc` |
+| Item                | Content                                  |
+| ------------------- | ---------------------------------------- |
+| **Syntax**          | `A B C`                                  |
+| **Meaning**         | Match A, then B, then C                  |
+| **Example**         | `abc`                                    |
+| **Equivalent code** | `parse('('); parse(Number); parse(')');` |
 
-
-Equivalent to calling functions in order:
-
-parse('('); parse(Number); parse(')');
 
 #### Ordered Choice (OR)
-| Syntax | Meaning | Example |
-|--------|---------|---------|
-|/	Try left; if it fails without consuming input, try right|	'+' / '-'| Sign <- '+' / '-'
-
-"A" / "AB"   # matches "A", never "AB"
+| Item             | Content                                           |
+| ---------------- | ------------------------------------------------- |
+| **Syntax**       | `A / B`                                           |
+| **Meaning**      | Try A; if it fails without consuming input, try B |
+| **Example**      | `'+' / '-'`                                       |
+| **Grammar rule** | `Sign <- '+' / '-'`                               |
+| **Note**         | `"A" / "AB"` matches `"A"`, never `"AB"`          |
 
 #### Grouping
-( … )	Group expressions
-(',' Number)*
-Means: zero or more occurrences of ',' Number
+| Item            | Content                                  |
+| --------------- | ---------------------------------------- |
+| **Syntax**      | `( … )`                                  |
+| **Meaning**     | Group expressions                        |
+| **Example**     | `(',' Number)*`                          |
+| **Explanation** | Zero or more occurrences of `',' Number` |
+
 
 #### Rule Definition (Nonterminals)
-Rule <- expression	Define a grammar rule
-Number <- [0-9]+
-**Think of rules as functions.**
+| Item        | Content                     |
+| ----------- | --------------------------- |
+| **Syntax**  | `Rule <- expression`        |
+| **Meaning** | Define a grammar rule       |
+| **Example** | `Number <- [0-9]+`          |
+| **Concept** | Think of rules as functions |
+
 
 #### Lookahead (VERY IMPORTANT)
-&e	Positive lookahead (must match, but don’t consume)
-!e	Negative lookahead (must NOT match)
-Identifier <- [a-zA-Z]+ ![0-9]
-Matches letters not followed by a digit
-Lookahead does not consume input.
+| Item                   | Content                                       |
+| ---------------------- | --------------------------------------------- |
+| **Positive lookahead** | `&e` — must match, but does not consume input |
+| **Negative lookahead** | `!e` — must NOT match                         |
+| **Example rule**       | `Identifier <- [a-zA-Z]+ ![0-9]`              |
+| **Matches**            | Letters not followed by a digit               |
+| **Note**               | Lookahead does not consume input              |
+
 
 #### Literal Strings
-"abc"	Match literal string
-'a'	Match literal character
-Keyword <- "while"
+| Item               | Content                 |
+| ------------------ | ----------------------- |
+| **Syntax**         | `"abc"`                 |
+| **Meaning**        | Match literal string    |
+| **Syntax (char)**  | `'a'`                   |
+| **Meaning (char)** | Match literal character |
 
 #### Whitespace Handling (peglib-specific)
-%whitespace <- expr	Automatically skipped between tokens
-Silent rule	Does not appear in parse tree
-%whitespace <- [\t ]*
-Meaning: Skip any number of spaces or tabs between tokens
+| Item            | Content                                          |
+| --------------- | ------------------------------------------------ |
+| **Directive**   | `%whitespace <- expr`                            |
+| **Meaning**     | Automatically skipped between tokens             |
+| **Rule type**   | Silent rule (does not appear in parse tree)      |
+| **Example**     | `%whitespace <- [\t ]*`                          |
+| **Explanation** | Skip any number of spaces or tabs between tokens |
 
 ### Rules, Sequence, Choice, Repetition
 > Peg Parsers have similar functionality to its imperative counterparts
@@ -193,19 +216,22 @@ Meaning: Skip any number of spaces or tabs between tokens
 - input cursor moves forwar on success consuming charaters
 #### Sequence -> Function Calls
 - A <- B C D
-` bool A() 
+```
+ bool A() 
 {
     if (!B()) return false;
     if (!C()) return false;
     if (!D()) return false;
     return true;
-}`
+}
+```
 - all parts must succeed
 - failure stops immediately
 - Cursor advances step-by-step
 #### Choice if / else
 - A <- B / C
-`bool A() 
+```
+bool A() 
 {
     if (B())
     {
@@ -213,18 +239,58 @@ Meaning: Skip any number of spaces or tabs between tokens
     }
     return C();
 }
-`
+```
 - if B() succeeds C() is never called
 - No backtracking after succes
 #### Repetition (*, +, ?) → Loops
 - A <- B*
-`bool A() {
-    while (B()) {
+```
+bool A()
+{
+    while (B()) 
+    {
         // keep consuming
     }
     return true;
-`}
+}
+```
 - Failure stops the loop
 - Failure does not consume input
 - Loop itself always succeeds
 
+## The Difference between A recursive decent parser and a PEG parser
+Now that we have at least a baseline familiarity with PEG Parsers lets discuss the difference in detail between the C recursive decent parser and the C PEG Parser. Pay special attention to 
+### Left recursion
+- "A rule is left-recursive if it can call itself before consuming input."
+- `A → A α`
+- This is also not allowed
+```
+A → B α
+B → A β
+```
+The basic idea is that Recursive-descent and PEG cannot handle this because:
+    1. Parser calls A
+    2. A immediately calls A
+    3. No input consumed
+    4. Infinite recursion
+    **This is not about precedence This is about call order vs input consumption. We get stuck in an infinite loop**
+#### A comparision of C Grammers Recursive Decent Parser
+Take a look at this broken grammar and tell me whats wrong with it.
+```
+expression
+    : assignment_expression
+    | expression ',' assignment_expression
+    ;
+```
+You most likely noticed `expression → expression ',' assignment_expression` is the dreaded left recursion we were just talking about. Your function may look something like the following
+```
+parse_expression() 
+{
+    parse_expression(); // ← infinite loop
+    match(',');
+    parse_assignment_expression();
+}
+```
+#### How PEG could address this issue
+- Now look at our PEG Grammar `Expression <- AssignmentExpression (',' AssignmentExpression)*`
+- No call to Expression without consuming input
